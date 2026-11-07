@@ -45,3 +45,28 @@ php artisan boost:install
 
 Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
 </laravel-boost-guidelines>
+<application-guidelines>
+# Application
+## Добавочные папки приложения
+- В папке app создай папку Library
+- По указанному пути app/Library/Functions/Functions.php создай файл и все папки, что есть в этом пути если их нет.
+- В папке app создай папку Services
+- В папке app создай папку Pagings
+- В папке app создай папку Repositories
+- В папке app создай папку API
+## Добавочные понятия приложения
+- API является классом, который содержит в себе код для http запросов на сторонние сервера, классы API размещай в папке app/API
+- Пейджинги являются классами, которые содержат в себе код запросов в базу данных для постраничного вывода данных, пейджинги размещай в папке app/Pagings
+- Репозитории являются классами, которые содержат в себе код запросов в базу данных, репозитории размещай в папке app/Repositories
+- Сервисы являются классами, которые содержат в себе бизнес логику, сервисы размещай в папке app/Services
+## Добавочные правила именования
+- В именах контроллеров делай имя сущности во множественном числе с суффиксом Controller, например UsersController
+- В именах сервисов делай имя сущности во множественном числе с суффиксом Service, например UsersService
+- В именах API делай имя сущности во множественном числе с суффиксом API, например UsersAPI
+- В именах моделей делай только имя сущности в единсвенном числе, например User
+- В именах классов для валидации данных делай имя сущности в единственном числе с суффиксом Request, например UserRequest
+- Глобальные функции добавляй в файлы по следующему пути: app/Library/Functions/Functions.php
+- В именах пейджингов используй имя сущности во множественном числе с суффиксом Paging, например UsersPaging
+- В именах репозиториев используй имя сущности во множественном числе с суффиксом Repository, например UsersRepository
+- Роуты добавляй в файл routes/web.php, если это роуты для ajax запросов с фронтенда то добавляй роуты в файл routes/api.php, роуты должны ссылаться на контроллеры
+  </application-guidelines>
