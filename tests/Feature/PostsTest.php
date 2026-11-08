@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class PostsTest extends TestCase
@@ -19,12 +20,11 @@ class PostsTest extends TestCase
         $this->travelTo(now()->parse('2026-11-07 07:05:09', 'UTC'));
     }
 
-    public function test_home_page_shows_url_field_and_button(): void
+    public function test_home_page_shows_fields_and_button_below_them(): void
     {
         $this->get('/')
             ->assertOk()
-            ->assertSee('url страницы постов')
-            ->assertSee('Записать');
+            ->assertSeeInOrder(['url страницы постов', 'количество дней', 'Записать']);
     }
 
     public function test_posts_are_uploaded_into_new_folders_on_yandex_disk(): void
@@ -38,13 +38,18 @@ class PostsTest extends TestCase
             $existingFolders,
         );
 
-        $this->post('/posts', ['url' => self::PAGE_URL])
+        $this->post('/posts', ['url' => self::PAGE_URL, 'day_count' => 3])
             ->assertRedirect()
             ->assertSessionHas('success', 'Загрузка постов на Яндекс Диск произведена успешно. Загружено постов: 2.');
 
-        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'api.openai.com')
-            && str_contains($request['input'], 'Возьми посты со страницы '.self::PAGE_URL.' день публикации')
-            && ! str_contains($request['input'], '%url'));
+        Http::assertSent(function (Request $request): bool {
+            $prompt = $request['contents'][0]['parts'][0]['text'] ?? '';
+
+            return str_contains($request->url(), 'generativelanguage.googleapis.com')
+                && str_contains($prompt, 'Возьми посты со страницы '.self::PAGE_URL.' день публикации которых не больше 3 дней')
+                && ! str_contains($prompt, '%url')
+                && ! str_contains($prompt, '%day_count');
+        });
 
         $this->assertSame(
             ['/07.11.2026 10:05:092', '/07.11.2026 10:05:093'],
@@ -61,17 +66,17 @@ class PostsTest extends TestCase
     {
         $this->fakeApis('[]');
 
-        $this->post('/posts', ['url' => self::PAGE_URL])
-            ->assertSessionHas('error', 'На странице не найдено постов за последний день.');
+        $this->post('/posts', ['url' => self::PAGE_URL, 'day_count' => 1])
+            ->assertSessionHas('error', 'На странице не найдено постов за указанное количество дней.');
 
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'yandex'));
     }
 
-    public function test_error_is_shown_when_chatgpt_answer_is_not_json(): void
+    public function test_error_is_shown_when_gemini_answer_is_not_json(): void
     {
         $this->fakeApis('Не удалось открыть страницу');
 
-        $this->post('/posts', ['url' => self::PAGE_URL])
+        $this->post('/posts', ['url' => self::PAGE_URL, 'day_count' => 1])
             ->assertSessionHas('error', fn (string $message): bool => str_starts_with($message, 'Не удалось обработать посты'));
     }
 
@@ -79,8 +84,33 @@ class PostsTest extends TestCase
     {
         Http::fake();
 
-        $this->post('/posts', ['url' => 'не url'])
+        $this->post('/posts', ['url' => 'не url', 'day_count' => 1])
             ->assertSessionHasErrors(['url' => 'Введите корректный url страницы постов.']);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * @return array<string, array{mixed, string}>
+     */
+    public static function invalidDayCounts(): array
+    {
+        return [
+            'отсутствует' => [null, 'Введите количество дней.'],
+            'дробное' => ['1.5', 'Количество дней должно быть целым числом.'],
+            'не число' => ['abc', 'Количество дней должно быть целым числом.'],
+            'ноль' => [0, 'Количество дней должно быть больше нуля.'],
+            'отрицательное' => [-2, 'Количество дней должно быть больше нуля.'],
+        ];
+    }
+
+    #[DataProvider('invalidDayCounts')]
+    public function test_day_count_must_be_positive_integer(mixed $dayCount, string $message): void
+    {
+        Http::fake();
+
+        $this->post('/posts', ['url' => self::PAGE_URL, 'day_count' => $dayCount])
+            ->assertSessionHasErrors(['day_count' => $message]);
 
         Http::assertNothingSent();
     }
@@ -91,10 +121,9 @@ class PostsTest extends TestCase
     private function fakeApis(string $answer, array $existingFolders = []): void
     {
         Http::fake(function (Request $request) use ($answer, &$existingFolders) {
-            if (str_contains($request->url(), 'api.openai.com')) {
-                return Http::response(['output' => [
-                    ['type' => 'web_search_call'],
-                    ['type' => 'message', 'content' => [['type' => 'output_text', 'text' => $answer]]],
+            if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+                return Http::response(['candidates' => [
+                    ['content' => ['role' => 'model', 'parts' => [['text' => $answer]]]],
                 ]]);
             }
 

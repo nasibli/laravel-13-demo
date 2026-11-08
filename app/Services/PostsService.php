@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\API\ChatGPTAPI;
+use App\API\GeminiAPI;
 use App\API\YandexDiskAPI;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -13,7 +13,7 @@ class PostsService
 {
     private const string PROMPT = <<<'PROMPT'
         Ты опытный рерайтер
-        Возьми посты со страницы %url день публикации которых не больше одного дня по сравнению с текущей датой, текущую дату бери по часовому поясу Москва. Если не находишь даты публикации поста, то обрати внимание на то, сколько минут, часов, или дней назад опубликована статья и сравни с текущей датой.
+        Возьми посты со страницы %url день публикации которых не больше %day_count дней по сравнению с текущей датой, текущую дату бери по часовому поясу Москва. Если не находишь даты публикации поста, то обрати внимание на то, сколько минут, часов, или дней назад опубликована статья и сравни с текущей датой.
         Сделай классный рерайт, чтобы пост выглядел еще лучше и интереснее и сделай цепляющий заголовок.
         Должно получиться заголовок и сам рерайт поста
         Сделай ответ в формате json, который содержит массив объектов (данные по каждому посту), каждый объект c двумя полями title - новый заголовок поста, post - текст пересказанного поста
@@ -22,12 +22,12 @@ class PostsService
     private const string FILE_NAME = 'Post.txt';
 
     public function __construct(
-        private ChatGPTAPI $chatGPTAPI,
+        private GeminiAPI $geminiAPI,
         private YandexDiskAPI $yandexDiskAPI,
     ) {}
 
     /**
-     * Переписывает свежие посты со страницы через ChatGPT и загружает каждый в свою папку на Яндекс Диске.
+     * Переписывает посты со страницы за последние $dayCount дней через Gemini и загружает каждый в свою папку на Яндекс Диске.
      *
      * @return int Количество загруженных постов.
      *
@@ -35,9 +35,10 @@ class PostsService
      * @throws RequestException
      * @throws RuntimeException
      */
-    public function rewriteToYandexDisk(string $url): int
+    public function rewriteToYandexDisk(string $url, int $dayCount): int
     {
-        $posts = $this->parsePosts($this->chatGPTAPI->ask(str_replace('%url', $url, self::PROMPT)));
+        $prompt = strtr(self::PROMPT, ['%url' => $url, '%day_count' => (string) $dayCount]);
+        $posts = $this->parsePosts($this->geminiAPI->ask($prompt));
 
         foreach ($posts as $post) {
             $folder = $this->createUniqueFolder();
@@ -83,7 +84,7 @@ class PostsService
         $data = json_decode($json, true);
 
         if (! is_array($data)) {
-            throw new RuntimeException('ChatGPT вернул ответ не в формате JSON: '.$answer);
+            throw new RuntimeException('Gemini вернул ответ не в формате JSON: '.$answer);
         }
 
         if (! array_is_list($data)) {

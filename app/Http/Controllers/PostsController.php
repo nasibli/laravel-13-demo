@@ -19,11 +19,14 @@ class PostsController extends Controller
 
     public function store(PostRequest $request, PostsService $postsService): RedirectResponse
     {
-        // Ответ ChatGPT с веб-поиском может идти несколько минут.
-        set_time_limit((int) config('services.openai.timeout') + 60);
+        // Ответ Gemini с чтением страницы и поиском может идти несколько минут.
+        set_time_limit((int) config('services.gemini.timeout') + 60);
 
         try {
-            $count = $postsService->rewriteToYandexDisk($request->validated('url'));
+            $count = $postsService->rewriteToYandexDisk(
+                $request->validated('url'),
+                (int) $request->validated('day_count'),
+            );
         } catch (ConnectionException|RequestException|RuntimeException $e) {
             report($e);
 
@@ -31,7 +34,7 @@ class PostsController extends Controller
         }
 
         if ($count === 0) {
-            return back()->withInput()->with('error', 'На странице не найдено постов за последний день.');
+            return back()->withInput()->with('error', 'На странице не найдено постов за указанное количество дней.');
         }
 
         return back()->with('success', "Загрузка постов на Яндекс Диск произведена успешно. Загружено постов: {$count}.");
